@@ -1,0 +1,5 @@
+{
+  "name": "KSUMC Navi",
+  "description": "A user-friendly indoor navigation app using WebAR and QR codes for localization. Features glowing pathfinding and offline support.",
+  "requestFramePermissions": ["camera", "geolocation"]
+}
