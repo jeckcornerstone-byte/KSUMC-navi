@@ -21,56 +21,127 @@ import {
   WifiOff,
   X,
   Compass,
-  BrainCircuit
+  BrainCircuit,
+  AlertTriangle,
+  Download,
+  ExternalLink,
+  Globe,
+  Car,
+  Building2,
+  Briefcase,
+  Stethoscope,
+  DoorOpen
 } from 'lucide-react';
 
 const MAP_VERSION = '1.6'; // Increment this to force a reset to DEFAULT_MAP
 
 const DEFAULT_MAP: MapData = {
+  settings: {
+    appName: 'KSUMC Navi',
+  },
   nodes: [
-    { id: '1', name: 'Administration Building', x:24.7117215, y: 46.6225812, z: 0, qrCode: 'admin', isAnchor: true },
-    { id: '2', name: 'Parking', x: 24.7117116, y: 46.6225909, z: 0, qrCode: 'parking', isAnchor: true }, 
-    { id: '3', name: 'OPD Building', x: 24.7117253, y: 46.6225209, z: 0, qrCode: 'opd building', isAnchor: true },
-    { id: '4', name: 'East Building', x: 24.7757, y: 46.8020, z: 0, qrCode: 'east building', isAnchor: true },
-    { id: '5', name: 'Main Entrance', x: 24.7756308, y: 46.8018328, z: 0, qrCode: 'entrance', isAnchor: true },
+    { id: '1', name: 'Administration Building', x:24.711876, y: 46.622209, z: 0, qrCode: 'admin', isAnchor: true, icon: 'admin', color: 'text-purple-500' },
+    { id: '2', name: 'Parking', x: 24.710895, y: 46.622153, z: 0, qrCode: 'parking', isAnchor: true, icon: 'parking', color: 'text-orange-500' }, 
+    { id: '3', name: 'OPD Building', x: 24.711372, y: 46.621896, z: 0, qrCode: 'opd building', isAnchor: true, icon: 'medical', color: 'text-red-500' },
+    { id: '4', name: 'East Building', x: 24.712134, y: 46.622421, z: 0, qrCode: 'east building', isAnchor: true, icon: 'building', color: 'text-yellow-500' },
+    { id: '5', name: 'KKUH Entrance', x: 24.711159, y: 46.622387, z: 0, qrCode: 'entrance', isAnchor: true, icon: 'entrance', color: 'text-black-500' },
+    { id: '6', name: 'Dental Hospital', x: 24.7149067, y: 46.6225161, z: 0, qrCode: 'dental', isAnchor: true, icon: 'dental', color: 'text-blue-500' },
+    { id: '7', name: 'ICU Building', x: 24.7141634, y: 46.6224131, z: 0, qrCode: 'icu', isAnchor: true, icon: 'icu', color: 'text-green-500' },
   ],
   edges: [
     { from: '1', to: '2', distance: 0},
     { from: '2', to: '3', distance: 0},
     { from: '3', to: '4', distance: 0},
     { from: '4', to: '5', distance: 0},
-    { from: '5', to: '1', distance: 0},
+    { from: '5', to: '6', distance: 0},
+    { from: '6', to: '7', distance: 0},
+    { from: '7', to: '1', distance: 0},
   ]
 };
 
 export default function App() {
-  const [mapData, setMapData] = useState<MapData>(DEFAULT_MAP);
+  const [mapData, setMapData] = useState<MapData>(() => {
+    const saved = localStorage.getItem('naviar-map-data');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.nodes && parsed.edges) return parsed;
+      } catch (e) {
+        console.error("Failed to parse saved map data", e);
+      }
+    }
+    return DEFAULT_MAP;
+  });
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(() => {
     return localStorage.getItem('naviar-current-node');
   });
-  const [destinationNodeId, setDestinationNodeId] = useState<string | null>(null);
+  const [destinationNodeId, setDestinationNodeId] = useState<string | null>(() => {
+    return localStorage.getItem('naviar-destination-node');
+  });
   const [currentPath, setCurrentPath] = useState<string[]>([]);
   
   const [isScanning, setIsScanning] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
-  const [isNavigating, setIsNavigating] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(() => {
+    return localStorage.getItem('naviar-is-navigating') === 'true';
+  });
   const [isArrivalOpen, setIsArrivalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAiTracingEnabled, setIsAiTracingEnabled] = useState(true);
   const [userLocation, setUserLocation] = useState<{ x: number, y: number, z: number, accuracy: number } | null>(null);
   const [localizationMessage, setLocalizationMessage] = useState<string | null>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
+  const [networkInfo, setNetworkInfo] = useState<{ type: string, effectiveType: string } | null>(null);
   const [isGpsRequested, setIsGpsRequested] = useState(true);
   const [isInIframe, setIsInIframe] = useState(false);
   const [isSafari, setIsSafari] = useState(false);
+  const [isSupportedBrowser, setIsSupportedBrowser] = useState(true);
+  const [isIPhone, setIsIPhone] = useState(false);
   const [tracingConfidence, setTracingConfidence] = useState<number>(0);
   const [showAdminButton, setShowAdminButton] = useState(false);
   const [devClickCount, setDevClickCount] = useState(0);
 
-  // Check for admin access and iframe status on mount
+  // Check for admin access, iframe status, and browser support on mount
   useEffect(() => {
+    // Monitor network status for Signal Anchoring
+    const updateNetworkInfo = () => {
+      const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+      if (conn) {
+        setNetworkInfo({
+          type: conn.type || 'unknown',
+          effectiveType: conn.effectiveType || 'unknown'
+        });
+      }
+    };
+
+    updateNetworkInfo();
+    const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+    if (conn) {
+      conn.addEventListener('change', updateNetworkInfo);
+    }
+
+    // Force browser to not use disk cache for this session if possible
+    // (This is a hint to the browser, not a guarantee)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+
+    const ua = navigator.userAgent;
+    const isChrome = /Chrome/.test(ua) && !/Edg/.test(ua) && !/OPR/.test(ua);
+    const isIosChrome = /CriOS/.test(ua);
+    const isIPhoneUA = /iPhone|iPod/.test(ua);
+    setIsIPhone(isIPhoneUA);
+    
+    // Google Chrome is the default and required browser
+    const supported = isChrome || isIosChrome;
+    setIsSupportedBrowser(supported);
+
     setIsInIframe(window.self !== window.top);
-    setIsSafari(/^((?!chrome|android).)*safari/i.test(navigator.userAgent));
+    setIsSafari(/^((?!chrome|android).)*safari/i.test(ua));
     const params = new URLSearchParams(window.location.search);
     if (params.get('admin') === 'true' || localStorage.getItem('naviar-admin-mode') === 'true') {
       setShowAdminButton(true);
@@ -142,6 +213,21 @@ export default function App() {
     refreshGps();
   };
 
+  // Persist navigation state
+  useEffect(() => {
+    if (currentNodeId) localStorage.setItem('naviar-current-node', currentNodeId);
+    else localStorage.removeItem('naviar-current-node');
+  }, [currentNodeId]);
+
+  useEffect(() => {
+    if (destinationNodeId) localStorage.setItem('naviar-destination-node', destinationNodeId);
+    else localStorage.removeItem('naviar-destination-node');
+  }, [destinationNodeId]);
+
+  useEffect(() => {
+    localStorage.setItem('naviar-is-navigating', isNavigating.toString());
+  }, [isNavigating]);
+
   // Geolocation for auto-localization
   useEffect(() => {
     if (!navigator.geolocation || !isGpsRequested) return;
@@ -149,7 +235,7 @@ export default function App() {
     const options = { 
       enableHighAccuracy: true, 
       timeout: 20000, 
-      maximumAge: 10000 
+      maximumAge: 0 // Force fresh location data for maximum accuracy
     };
 
     const handleSuccess = (pos: GeolocationPosition) => {
@@ -200,7 +286,7 @@ export default function App() {
 
   // Load map from localStorage for offline support
   useEffect(() => {
-    const savedMap = localStorage.getItem('naviar-map');
+    const savedMap = localStorage.getItem('naviar-map-data');
     const savedVersion = localStorage.getItem('naviar-map-version');
 
     if (savedMap && savedVersion === MAP_VERSION) {
@@ -233,7 +319,11 @@ export default function App() {
           }
         });
 
-        setMapData({ ...parsed, nodes: syncedNodes });
+        setMapData({ 
+          ...parsed, 
+          nodes: syncedNodes,
+          settings: parsed.settings || DEFAULT_MAP.settings
+        });
       } catch (e) {
         console.error("Failed to parse saved map", e);
         setMapData(DEFAULT_MAP);
@@ -242,7 +332,7 @@ export default function App() {
       // If version mismatch or no saved map, use defaults and save version
       setMapData(DEFAULT_MAP);
       localStorage.setItem('naviar-map-version', MAP_VERSION);
-      localStorage.setItem('naviar-map', JSON.stringify(DEFAULT_MAP));
+      localStorage.setItem('naviar-map-data', JSON.stringify(DEFAULT_MAP));
     }
   }, []);
 
@@ -252,14 +342,14 @@ export default function App() {
     const sanitizedMap = { ...newMap, nodes: uniqueNodes };
     
     setMapData(sanitizedMap);
-    localStorage.setItem('naviar-map', JSON.stringify(sanitizedMap));
+    localStorage.setItem('naviar-map-data', JSON.stringify(sanitizedMap));
     localStorage.setItem('naviar-map-version', MAP_VERSION);
     setIsAdminOpen(false);
   };
 
   const resetMap = () => {
     setMapData(DEFAULT_MAP);
-    localStorage.removeItem('naviar-map');
+    localStorage.removeItem('naviar-map-data');
     localStorage.setItem('naviar-map-version', MAP_VERSION);
     setIsAdminOpen(false);
   };
@@ -339,6 +429,10 @@ export default function App() {
       return;
     }
 
+    // Refresh state when choosing a new destination
+    setLocalizationMessage(null);
+    setTracingConfidence(0);
+
     const path = findShortestPath(mapData, startId, destId);
     if (path.length > 0) {
       setCurrentPath(path);
@@ -369,8 +463,11 @@ export default function App() {
       }
     });
 
-    // If we are more than 30m away from the path, recalculate
-    if (minPathDist > 30) {
+    // If we are more than 40m away from the path, recalculate
+    // BUT: If we are already close to the destination (< 25m), don't recalculate, just stay locked
+    const distToDest = calculateDistance(userLocation as unknown as Node, mapData.nodes.find(n => n.id === destinationNodeId)!);
+    
+    if (minPathDist > 40 && distToDest > 25) {
       const nearest = mapData.nodes.reduce((prev, curr) => {
         const distPrev = calculateDistance(userLocation as unknown as Node, prev);
         const distCurr = calculateDistance(userLocation as unknown as Node, curr);
@@ -389,12 +486,142 @@ export default function App() {
     }
   }, [userLocation, isNavigating, destinationNodeId, currentPath, mapData]);
 
+  // Update current node as user progresses along the path (forward only)
+  useEffect(() => {
+    if (!isNavigating || !userLocation || currentPath.length === 0) return;
+
+    const currentIdx = currentPath.indexOf(currentNodeId || "");
+    const searchStart = currentIdx !== -1 ? currentIdx : 0;
+
+    // Look ahead in the path for the nearest node
+    let bestIdx = searchStart;
+    let minDist = calculateDistance(userLocation as unknown as Node, mapData.nodes.find(n => n.id === currentPath[searchStart])!);
+
+    for (let i = searchStart + 1; i < currentPath.length; i++) {
+      const node = mapData.nodes.find(n => n.id === currentPath[i]);
+      if (node) {
+        const d = calculateDistance(userLocation as unknown as Node, node);
+        if (d < minDist && d < 15) { // Must be within 15m to "advance" to it
+          minDist = d;
+          bestIdx = i;
+        }
+      }
+    }
+
+    if (bestIdx > searchStart) {
+      setCurrentNodeId(currentPath[bestIdx]);
+    }
+  }, [userLocation, isNavigating, currentPath, currentNodeId, mapData]);
+
   const filteredNodes = mapData.nodes.filter(n => 
     n.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const getNodeIcon = (node: Node) => {
+    // 1. Use explicit node properties if they exist
+    if (node.icon || node.color) {
+      const iconMap = {
+        parking: Car,
+        entrance: DoorOpen,
+        building: Building2,
+        admin: Briefcase,
+        medical: Stethoscope,
+        dental: Stethoscope,
+        icu: Stethoscope,
+        default: MapPin
+      };
+      
+      const Icon = iconMap[node.icon || 'default'] || MapPin;
+      const colorClass = node.color || 'text-gray-400';
+      const bgClass = colorClass.replace('text-', 'bg-').replace('-500', '-50');
+      
+      return { icon: Icon, color: colorClass, bg: bgClass };
+    }
+
+    // 2. Fallback to name-based detection (legacy support)
+    const lower = node.name.toLowerCase();
+    if (lower.includes('parking')) return { icon: Car, color: 'text-orange-500', bg: 'bg-orange-50' };
+    if (lower.includes('entrance')) return { icon: DoorOpen, color: 'text-green-500', bg: 'bg-green-50' };
+    if (lower.includes('building')) return { icon: Building2, color: 'text-blue-500', bg: 'bg-blue-50' };
+    if (lower.includes('administration')) return { icon: Briefcase, color: 'text-purple-500', bg: 'bg-purple-50' };
+    if (lower.includes('opd')) return { icon: Stethoscope, color: 'text-red-500', bg: 'bg-red-50' };
+    return { icon: MapPin, color: 'text-gray-400', bg: 'bg-gray-50' };
+  };
+
+  if (isIPhone && isInIframe) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center p-6 text-center font-sans">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-sm w-full bg-white rounded-[40px] p-10 shadow-2xl"
+        >
+          <div className="w-24 h-24 bg-blue-50 rounded-[32px] flex items-center justify-center mx-auto mb-8 shadow-inner">
+            <ExternalLink className="w-10 h-10 text-blue-600" />
+          </div>
+          <h1 className="text-3xl font-black text-gray-900 tracking-tighter mb-4 leading-none">
+            Open in New Tab
+          </h1>
+          <p className="text-gray-500 text-sm mb-10 leading-relaxed font-medium">
+            iPhone Safari blocks <span className="text-blue-600 font-bold">Location</span> and <span className="text-blue-600 font-bold">Compass</span> access inside previews. Please open the app in a new tab for the full experience.
+          </p>
+          <button 
+            onClick={() => window.open(window.location.href, '_blank')}
+            className="w-full bg-blue-600 text-white font-black py-6 rounded-3xl shadow-[0_20px_40px_rgba(37,99,235,0.3)] hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-3 text-lg"
+          >
+            <ExternalLink className="w-6 h-6" /> Open App Now
+          </button>
+          <p className="mt-8 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
+            Required for iPhone Sensors
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (!isSupportedBrowser) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 font-sans">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-sm w-full bg-white rounded-[32px] p-8 shadow-2xl border border-gray-100 text-center"
+        >
+          <div className="w-20 h-20 bg-orange-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
+            <AlertTriangle className="w-10 h-10 text-orange-600" />
+          </div>
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight mb-4 leading-tight">
+            Chrome Required
+          </h1>
+          <p className="text-gray-500 text-sm mb-8 leading-relaxed">
+            Google Chrome is the default and recommended browser for this application. Please switch to Chrome for a better and more convenient experience.
+          </p>
+          
+          <div className="space-y-3">
+            <a 
+              href="https://www.google.com/chrome/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center justify-between w-full bg-blue-600 text-white font-bold py-4 px-6 rounded-2xl hover:bg-blue-700 transition-all active:scale-95 shadow-lg shadow-blue-200"
+            >
+              <div className="flex items-center gap-3">
+                <Globe className="w-5 h-5" />
+                <span>Download Chrome</span>
+              </div>
+              <Download className="w-4 h-4 opacity-50" />
+            </a>
+          </div>
+          
+          <p className="mt-8 text-[10px] font-black text-blue-600 uppercase tracking-widest animate-pulse">
+            Google Chrome is Required
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans selection:bg-blue-100">
+    <div className="h-[100dvh] w-full bg-gray-50 text-gray-900 font-sans selection:bg-blue-100 overflow-hidden flex flex-col">
       <AnimatePresence mode="wait">
         {isNavigating ? (
           <motion.div 
@@ -421,8 +648,17 @@ export default function App() {
               }}
             />
             <button 
-              onClick={() => setIsNavigating(false)}
-              className="absolute top-6 right-6 z-50 bg-white/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/30 text-white hover:bg-white/40 transition-all flex items-center gap-2 font-bold text-sm"
+              onClick={() => {
+                // Ensure camera tracks are stopped before closing
+                const arjsVideos = document.querySelectorAll('.arjs-video');
+                arjsVideos.forEach(v => {
+                  if (v instanceof HTMLVideoElement && v.srcObject) {
+                    (v.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+                  }
+                });
+                setIsNavigating(false);
+              }}
+              className="absolute top-6 right-6 z-50 bg-white/30 backdrop-blur-xl px-6 py-3 rounded-full border border-white/40 text-white hover:bg-white/50 transition-all flex items-center gap-2 font-black text-sm active:scale-95 shadow-2xl"
             >
               <X className="w-4 h-4" /> Exit
             </button>
@@ -432,18 +668,32 @@ export default function App() {
             key="home-view"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="max-w-md mx-auto px-6 pt-12 pb-24"
+            exit={{ opacity: 0, y: 20 }}
+            className="flex-1 overflow-y-auto pt-12 pb-24 px-6 scrollbar-hide"
           >
             {/* Header */}
             <div className="flex justify-between items-start mb-10">
               <div>
                 <h1 className="text-4xl font-black text-gray-900 tracking-tighter flex flex-col">
-                  <span>KSUMC <span className="text-blue-600">Navi</span></span>
+                  <div className="flex items-center gap-3">
+                    {mapData.settings?.logoUrl && (
+                      <img 
+                        src={mapData.settings.logoUrl} 
+                        alt="App Logo" 
+                        className="w-10 h-10 object-contain rounded-lg"
+                        referrerPolicy="no-referrer"
+                      />
+                    )}
+                    <span>
+                      {mapData.settings?.appName?.split(' ')[0] || 'KSUMC'} 
+                      <span className="text-blue-600"> {mapData.settings?.appName?.split(' ').slice(1).join(' ') || 'Navi'}</span>
+                    </span>
+                  </div>
                   <span 
                     onClick={handleDevClick}
                     className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1 select-none active:text-blue-400 transition-colors"
                   >
-                    Indoor navigation system made by Jeck
+                    Smart Navigation System - Jeck
                   </span>
                 </h1>
               </div>
@@ -593,24 +843,36 @@ export default function App() {
               <div className="flex gap-2 overflow-x-auto pb-2 mb-6 scrollbar-hide">
                 <button 
                   onClick={() => setIsAiTracingEnabled(!isAiTracingEnabled)}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap border ${
+                  className={`flex flex-col items-center justify-center gap-1 px-6 py-3 rounded-2xl text-xs font-bold transition-all whitespace-nowrap border ${
                     isAiTracingEnabled 
                       ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200" 
                       : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
                   }`}
                 >
-                  <BrainCircuit className={`w-4 h-4 ${isAiTracingEnabled ? "animate-pulse" : ""}`} />
-                  <div className="flex flex-col items-start leading-none">
-                    <span>AI Visual Guidance: {isAiTracingEnabled ? "ON" : "OFF"}</span>
-                    <span className="text-[8px] opacity-70">التوجيه البصري بالذكاء الاصطناعي</span>
+                  <BrainCircuit className={`w-5 h-5 ${isAiTracingEnabled ? "animate-pulse" : ""}`} />
+                  <div className="flex flex-col items-center leading-tight">
+                    <span>Smart View Detection: {isAiTracingEnabled ? "ON" : "OFF"}</span>
+                    <span className="text-[8px] opacity-100 font-black">التوجيه البصري بالذكاء الاصطناعي</span>
                   </div>
                 </button>
+
+                {userLocation && (
+                  <div className="flex flex-col items-center justify-center gap-1 px-6 py-3 rounded-2xl bg-green-50 border border-green-100 text-green-700 text-xs font-bold transition-all animate-in fade-in slide-in-from-left-4">
+                    <Navigation className="w-5 h-5 animate-pulse" />
+                    <div className="flex flex-col items-center leading-tight">
+                      <span>GPS ON</span>
+                      <span className="text-[8px] opacity-70">±{Math.round(userLocation.accuracy)}m Accuracy</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 px-2">Popular Destinations</h3>
               <div className="space-y-3">
                 {filteredNodes.map(node => {
                   const isCurrent = node.id === currentNodeId;
+                  const { icon: IconComponent, color, bg } = getNodeIcon(node);
+                  
                   return (
                     <button 
                       key={node.id}
@@ -623,8 +885,8 @@ export default function App() {
                       }`}
                     >
                       <div className="flex items-center gap-4">
-                        <div className={`p-3 rounded-xl transition-colors ${isCurrent ? "bg-blue-100" : "bg-gray-50 group-hover:bg-blue-50"}`}>
-                          <Navigation className={`w-5 h-5 ${isCurrent ? "text-blue-600" : "text-gray-400 group-hover:text-blue-500"}`} />
+                        <div className={`p-3 rounded-xl transition-colors ${isCurrent ? "bg-blue-100" : bg}`}>
+                          <IconComponent className={`w-5 h-5 ${isCurrent ? "text-blue-600" : color}`} />
                         </div>
                         <div className="text-left">
                           <div className="flex items-center gap-2">
@@ -680,7 +942,7 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50"
+            className="fixed inset-0 h-[100dvh] z-50"
           >
             <QRScanner 
               onScan={handleQRScan} 
@@ -694,10 +956,11 @@ export default function App() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed inset-0 z-[60]"
+            className="fixed inset-0 h-[100dvh] z-[60]"
           >
             <AdminPanel 
               mapData={mapData} 
+              userLocation={userLocation}
               onSave={saveMap} 
               onClose={() => setIsAdminOpen(false)} 
               onTestArrival={() => setIsArrivalOpen(true)}
@@ -718,13 +981,21 @@ export default function App() {
 
       {/* Navigation Bar (Floating) */}
       {!isNavigating && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xs px-4 z-30">
-          <div className="bg-white/80 backdrop-blur-xl border border-white/50 rounded-full p-2 shadow-2xl flex justify-around items-center">
-            <button onClick={() => setIsScanning(true)} className="p-4 text-blue-600 bg-blue-50 rounded-full transition-all hover:bg-blue-100">
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-auto min-w-[200px] z-30 px-6">
+          <div className="bg-white/90 backdrop-blur-2xl border border-white/50 rounded-full p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.1)] flex justify-center items-center gap-4 px-4">
+            <button 
+              onClick={() => setIsScanning(true)} 
+              className="p-4 text-blue-600 bg-blue-50 rounded-full transition-all hover:bg-blue-100 active:scale-90 shadow-sm"
+              title="Scan QR Code"
+            >
               <QrCode className="w-6 h-6" />
             </button>
             {showAdminButton && (
-              <button onClick={() => setIsAdminOpen(true)} className="p-4 text-gray-400 hover:text-blue-600 transition-colors">
+              <button 
+                onClick={() => setIsAdminOpen(true)} 
+                className="p-4 text-gray-400 hover:text-blue-600 transition-all hover:bg-gray-50 rounded-full active:scale-90"
+                title="Settings"
+              >
                 <Settings className="w-6 h-6" />
               </button>
             )}

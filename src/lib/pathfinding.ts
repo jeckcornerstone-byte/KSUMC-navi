@@ -87,3 +87,16 @@ export function calculateDistance(n1: Node, n2: Node): number {
     Math.pow(n1.z - n2.z, 2)
   );
 }
+
+export function calculateBearing(n1: Node, n2: Node): number {
+  const φ1 = n1.x * Math.PI / 180;
+  const φ2 = n2.x * Math.PI / 180;
+  const λ1 = n1.y * Math.PI / 180;
+  const λ2 = n2.y * Math.PI / 180;
+
+  const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) -
+            Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
+  const θ = Math.atan2(y, x);
+  return (θ * 180 / Math.PI + 360) % 360; // in degrees
+}

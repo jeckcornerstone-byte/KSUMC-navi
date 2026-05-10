@@ -7,17 +7,26 @@ export interface Node {
   qrCode?: string; // Associated QR code data for localization
   isAnchor?: boolean; // Whether this node acts as a high-precision anchor
   accuracy?: number; // GPS accuracy in meters
+  icon?: 'parking' | 'entrance' | 'building' | 'admin' | 'medical' | 'dental' | 'icu' | 'default';
+  color?: string; // Tailwind color class like 'text-blue-500'
 }
 
 export interface Edge {
   from: string;
   to: string;
   distance: number;
+  pathPoints?: { x: number, y: number }[]; // Recorded points along the real pathway
+}
+
+export interface AppSettings {
+  appName: string;
+  logoUrl?: string;
 }
 
 export interface MapData {
   nodes: Node[];
   edges: Edge[];
+  settings?: AppSettings;
 }
 
 export interface UserPosition {

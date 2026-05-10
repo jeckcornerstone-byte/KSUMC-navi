@@ -71,7 +71,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   }, [onScan]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+    <div className="fixed inset-0 h-[100dvh] z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
       <div className="bg-white rounded-3xl overflow-hidden w-full max-w-md shadow-2xl flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 flex justify-between items-center border-b border-gray-100">

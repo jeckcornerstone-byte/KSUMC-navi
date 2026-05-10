@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { MapData, Node, Edge } from '../types';
-import { Plus, Trash2, Save, X, Map as MapIcon, Link as LinkIcon, QrCode, LocateFixed, HelpCircle, Bell, RotateCcw, MapPin, Compass, Copy, Check, FileJson } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { MapData, Node, Edge, AppSettings } from '../types';
+import { Plus, Trash2, Save, X, Map as MapIcon, Link as LinkIcon, QrCode, LocateFixed, HelpCircle, Bell, RotateCcw, MapPin, Compass, Copy, Check, FileJson, Image as ImageIcon, Upload, Settings } from 'lucide-react';
 
 interface AdminPanelProps {
   mapData: MapData;
+  userLocation: { x: number, y: number, z: number, accuracy: number } | null;
   onSave: (data: MapData) => void;
   onClose: () => void;
   onTestArrival?: () => void;
@@ -11,11 +12,87 @@ interface AdminPanelProps {
   onSetCurrentNode?: (nodeId: string) => void;
 }
 
-export default function AdminPanel({ mapData, onSave, onClose, onTestArrival, onReset, onSetCurrentNode }: AdminPanelProps) {
+export default function AdminPanel({ mapData, userLocation, onSave, onClose, onTestArrival, onReset, onSetCurrentNode }: AdminPanelProps) {
   const [localData, setLocalData] = useState<MapData>(mapData);
-  const [activeTab, setActiveTab] = useState<'nodes' | 'edges'>('nodes');
+  const [activeTab, setActiveTab] = useState<'nodes' | 'edges' | 'settings'>('nodes');
   const [showGuide, setShowGuide] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [recordingEdgeIndex, setRecordingEdgeIndex] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recordingInterval = useRef<any>(null);
+
+  const startRecording = (index: number) => {
+    if (recordingEdgeIndex !== null) return;
+    setRecordingEdgeIndex(index);
+    
+    // Clear existing points if any
+    updateEdge(index, { pathPoints: [] });
+
+    recordingInterval.current = setInterval(() => {
+      if (userLocation) {
+        setLocalData(prev => {
+          const newEdges = [...prev.edges];
+          const edge = newEdges[index];
+          const points = edge.pathPoints || [];
+          
+          // Only add if it's a new point (at least 1m away)
+          const lastPoint = points[points.length - 1];
+          let isFarEnough = true;
+          if (lastPoint) {
+            // Convert lat/long difference to meters approximately
+            const dx = (userLocation.x - lastPoint.x) * 111320;
+            const dy = (userLocation.y - lastPoint.y) * 111320 * Math.cos(userLocation.x * Math.PI / 180);
+            const distMeters = Math.sqrt(dx * dx + dy * dy);
+            isFarEnough = distMeters > 1;
+          }
+          
+          if (!lastPoint || isFarEnough) {
+            newEdges[index] = {
+              ...edge,
+              pathPoints: [...points, { x: userLocation.x, y: userLocation.y }]
+            };
+          }
+          return { ...prev, edges: newEdges };
+        });
+      }
+    }, 1000);
+  };
+
+  const stopRecording = () => {
+    if (recordingInterval.current) {
+      clearInterval(recordingInterval.current);
+      recordingInterval.current = null;
+    }
+    setRecordingEdgeIndex(null);
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 500000) { // 500KB limit for localStorage safety
+      alert("Logo file is too large. Please use an image under 500KB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      updateSettings({ logoUrl: base64String });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const updateSettings = (updates: Partial<AppSettings>) => {
+    setLocalData({
+      ...localData,
+      settings: {
+        appName: localData.settings?.appName || 'KSUMC Navi',
+        logoUrl: localData.settings?.logoUrl,
+        ...updates
+      }
+    });
+  };
 
   const copyMapCode = () => {
     const code = `const DEFAULT_MAP: MapData = ${JSON.stringify(localData, null, 2)};`;
@@ -120,7 +197,7 @@ export default function AdminPanel({ mapData, onSave, onClose, onTestArrival, on
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-gray-50 flex flex-col">
+    <div className="fixed inset-0 h-[100dvh] z-[60] bg-gray-50 flex flex-col">
       {/* Header */}
       <div className="bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm">
         <div className="flex items-center gap-3">
@@ -210,6 +287,12 @@ export default function AdminPanel({ mapData, onSave, onClose, onTestArrival, on
             className={`px-6 py-3 font-bold text-sm transition-all border-b-2 ${activeTab === 'edges' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}
           >
             Connections ({localData.edges.length})
+          </button>
+          <button 
+            onClick={() => setActiveTab('settings')}
+            className={`px-6 py-3 font-bold text-sm transition-all border-b-2 ${activeTab === 'settings' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}
+          >
+            App Settings
           </button>
         </div>
         <button 
@@ -320,7 +403,7 @@ export default function AdminPanel({ mapData, onSave, onClose, onTestArrival, on
               <span className="font-bold text-sm">Add Location</span>
             </button>
           </div>
-        ) : (
+        ) : activeTab === 'edges' ? (
           <div className="max-w-3xl mx-auto space-y-4">
             {localData.edges.map((edge, idx) => (
               <div key={`${edge.from}-${edge.to}-${idx}`} className="bg-white p-4 rounded-xl border border-gray-200 flex items-center gap-4 shadow-sm">
@@ -354,6 +437,25 @@ export default function AdminPanel({ mapData, onSave, onClose, onTestArrival, on
                     className="w-full bg-gray-50 border rounded p-2 text-sm"
                   />
                 </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] uppercase font-bold text-gray-400">Pathway</label>
+                  <button 
+                    onClick={() => recordingEdgeIndex === idx ? stopRecording() : startRecording(idx)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg font-bold text-xs transition-all ${
+                      recordingEdgeIndex === idx 
+                        ? 'bg-red-100 text-red-600 animate-pulse' 
+                        : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                    }`}
+                  >
+                    <LocateFixed className="w-4 h-4" />
+                    {recordingEdgeIndex === idx ? 'Stop Scanning' : 'Scan Path'}
+                  </button>
+                  {edge.pathPoints && edge.pathPoints.length > 0 && (
+                    <span className="text-[9px] text-gray-400 font-bold text-center">
+                      {edge.pathPoints.length} points saved
+                    </span>
+                  )}
+                </div>
                 <button onClick={() => removeEdge(idx)} className="p-2 text-red-400 hover:text-red-600 mt-4">
                   <Trash2 className="w-5 h-5" />
                 </button>
@@ -366,6 +468,65 @@ export default function AdminPanel({ mapData, onSave, onClose, onTestArrival, on
               <Plus className="w-6 h-6" />
               <span className="font-bold text-sm">Add Connection</span>
             </button>
+          </div>
+        ) : (
+          <div className="max-w-xl mx-auto bg-white rounded-2xl border border-gray-200 p-8 shadow-sm">
+            <h2 className="text-2xl font-black text-gray-900 mb-6 flex items-center gap-2">
+              <Settings className="w-6 h-6 text-blue-600" />
+              General Settings
+            </h2>
+            
+            <div className="space-y-6">
+              <div>
+                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">App Name</label>
+                <input 
+                  type="text"
+                  value={localData.settings?.appName || 'KSUMC Navi'}
+                  onChange={(e) => updateSettings({ appName: e.target.value })}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 font-bold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  placeholder="Enter app name..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">App Logo</label>
+                <div className="flex items-center gap-6 p-4 bg-gray-50 border border-gray-200 rounded-2xl">
+                  <div className="w-20 h-20 bg-white rounded-xl border border-gray-200 flex items-center justify-center overflow-hidden shrink-0">
+                    {localData.settings?.logoUrl ? (
+                      <img src={localData.settings.logoUrl} alt="Logo Preview" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                    ) : (
+                      <ImageIcon className="w-8 h-8 text-gray-300" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs text-gray-500 mb-3 font-medium">Upload a small logo (PNG/JPG) to show next to the title.</p>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef}
+                      onChange={handleLogoUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-bold text-xs transition-all"
+                      >
+                        <Upload className="w-4 h-4" /> Upload Photo
+                      </button>
+                      {localData.settings?.logoUrl && (
+                        <button 
+                          onClick={() => updateSettings({ logoUrl: undefined })}
+                          className="text-red-500 hover:text-red-600 font-bold text-xs px-2"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
